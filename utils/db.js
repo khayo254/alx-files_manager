@@ -1,34 +1,29 @@
+import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
-const host = process.env.DB_HOST || 'localhost';
-const port = process.env.DB_PORT || 27017;
-const database = process.env.DB_DATABASE || 'files_manager';
-const url = `mongodb://${host}:${port}`;
-
+// Define the DBClient class
 class DBClient {
   constructor() {
-    this.client = null;
-    this.db = null;
-    this.connect();
-  }
+    const host = process.env.DB_HOST || 'localhost';
+    const port = process.env.DB_PORT || 27017;
+    const database = process.env.DB_DATABASE || 'files_manager';
+    const url = `mongodb://${host}:${port}`;
 
-  async connect() {
-    try {
-      // Dynamically import MongoClient as a CommonJS module
-      const { MongoClient } = await import('mongodb');
-      this.client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true });
-      await this.client.connect();
-      this.db = this.client.db(database);
-      console.log('Connected successfully to MongoDB');
-    } catch (err) {
-      console.error('Failed to connect to MongoDB', err);
-      throw err;
-    }
+    this.client = new MongoClient(url);
+    this.client.connect()
+      .then(() => {
+        console.log('Connected successfully to MongoDB');
+        this.db = this.client.db(database);
+      })
+      .catch(err => {
+        console.error('Failed to connect to MongoDB', err);
+      });
   }
 
   isAlive() {
-    return this.client && this.client.isConnected();
+    return this.client.isConnected();
   }
 
   async nbUsers() {
@@ -50,5 +45,6 @@ class DBClient {
   }
 }
 
+// Create and export an instance of the DBClient class
 const dbClient = new DBClient();
 export default dbClient;
