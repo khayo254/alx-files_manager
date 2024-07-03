@@ -1,48 +1,56 @@
-import { ObjectId } from 'mongodb';
-import dbClient from '../utils/db.js';
 import sha1 from 'sha1';
+import Queue from 'bull/lib/queue';
+import { ObjectID } from 'mongodb';
+import dbClient from '../utils/db';
+import redisClient from '../utils/redis';
+
+
+const userQueue = new Queue('email sending');
+
 
 class UsersController {
-  async postNew(req, res) {
-    const { email, password } = req.body;
-
-    // Check if email or password are missing
+  static async postNew(request, response) {
+    const { email, password } = request.body;
     if (!email) {
-      return res.status(400).json({ error: 'Missing email' });
+      response.status(400).json({ error: 'Missing email' });
+      return;
     }
     if (!password) {
-      return res.status(400).json({ error: 'Missing password' });
+      response.status(400).json({ error: 'Missing password' });
+      return;
+    }
+    const usersCollection = dbClient.db.collection('users');
+    const existingEmail = await usersCollection.findOne({ email });
+    if (existingEmail) {
+      response.status(400).json({ error: 'Already exist' });
+      return;
     }
 
-    try {
-      // Check if email already exists
-      const userExists = await dbClient.db.collection('users').findOne({ email });
-      if (userExists) {
-        return res.status(400).json({ error: 'Already exists' });
+    const shaHashedPw = sha1(password);
+    const inserted = await usersCollection.insertOne({ email, password: shaHashedPw });
+    const userId = inserted.insertedId;
+    userQueue.add({ userId })
+    response.status(201).json({ id: userId, email });
+  }
+
+  static async getMe(request, response) {
+    const token = request.header('X-Token');
+    const key = `auth_${token}`;
+    const userId = await redisClient.get(key);
+    // convert id from string to the ObjectID format it usually is in mongodb
+    const userObjId = new ObjectID(userId);
+    if (userId) {
+      const users = dbClient.db.collection('users');
+      const existingUser = await users.findOne({ _id: userObjId });
+      if (existingUser) {
+        response.status(200).json({ id: userId, email: existingUser.email });
+      } else {
+        response.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Hash the password using SHA1
-      const hashedPassword = sha1(password);
-
-      // Insert new user into the database
-      const result = await dbClient.db.collection('users').insertOne({
-        email,
-        password: hashedPassword,
-      });
-
-      // Return the newly created user with email and id
-      const newUser = {
-        id: result.insertedId,
-        email,
-      };
-
-      return res.status(201).json(newUser);
-    } catch (error) {
-      console.error('Error creating user:', error);
-      return res.status(500).json({ error: 'Server error' });
+    } else {
+      response.status(401).json({ error: 'Unauthorized' });
     }
   }
 }
 
-const usersController = new UsersController();
-export default usersController;
+module.exports = UsersController;

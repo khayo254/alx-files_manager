@@ -1,14 +1,12 @@
-import express from 'express';
-import routes from './routes/index.js';
-import dotenv from 'dotenv';
-
-dotenv.config();
+const express = require('express');
+const allRoutes = require('./routes/index');
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use('/', routes);
+app.use(express.json());
+// sets all the routes created in routes/index
+app.use('/', allRoutes);
 
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
+app.listen(port);
+module.exports = app;
