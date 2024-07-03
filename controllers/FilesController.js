@@ -210,9 +210,6 @@ class FilesController {
     const size = request.query.size || null;
     const token = request.header('X-Token');
     const userId = await redisClient.get(`auth_${token}`);
-    if (!userId) {
-      return response.status(401).json({ error: 'Unauthorized' });
-    }
 
     const fileId = new ObjectID(id);
     const file = await dbClient.db.collection('files').findOne({ _id: fileId });
@@ -220,8 +217,12 @@ class FilesController {
       return response.status(404).json({ error: 'Not found' });
     }
 
+    if (!file.isPublic && (!userId || file.userId.toString() !== userId)) {
+      return response.status(404).json({ error: 'Not found' });
+    }
+
     if (file.type === 'folder') {
-      return response.status(400).json({ error: 'A folder doesn\'t have content' });
+      return response.status(400).json({ error: "A folder doesn't have content" });
     }
 
     let filePath = file.localPath;
@@ -231,16 +232,16 @@ class FilesController {
 
     const statAsync = promisify(stat);
     const realpathAsync = promisify(realpath);
-    if (existsSync(filePath)) {
+    try {
+      const fileStat = await statAsync(filePath);
       const realPath = await realpathAsync(filePath);
-      const fileStat = await statAsync(realPath);
 
       response.setHeader('Content-Type', contentType(file.name));
       response.setHeader('Content-Length', fileStat.size);
 
       const readStream = fs.createReadStream(realPath);
       readStream.pipe(response);
-    } else {
+    } catch (err) {
       response.status(404).json({ error: 'Not found' });
     }
   }
