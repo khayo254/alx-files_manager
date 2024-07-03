@@ -98,7 +98,137 @@ class FilesController {
     }
   }
 
-  // Implement other methods (getShow, getIndex, putPublish, putUnPublish, getFile) similarly
-}
+  static async getShow(request, response) {
+    const { id } = request.params;
+    const token = request.header('X-Token');
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
 
-export default FilesController;
+    const fileId = new ObjectID(id);
+    const file = await dbClient.db.collection('files').findOne({ _id: fileId, userId });
+    if (!file) {
+      return response.status(404).json({ error: 'Not found' });
+    }
+
+    return response.status(200).json({
+      id: file._id,
+      userId: file.userId,
+      name: file.name,
+      type: file.type,
+      isPublic: file.isPublic,
+      parentId: file.parentId,
+      localPath: file.localPath,
+    });
+  }
+
+  static async getIndex(request, response) {
+    const token = request.header('X-Token');
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const parentId = request.query.parentId || 0;
+    const page = parseInt(request.query.page, 10) || 0;
+    const pageSize = 20;
+
+    const query = { userId, parentId };
+    const files = await dbClient.db.collection('files')
+      .find(query)
+      .skip(page * pageSize)
+      .limit(pageSize)
+      .toArray();
+
+    const result = files.map(file => ({
+      id: file._id,
+      userId: file.userId,
+      name: file.name,
+      type: file.type,
+      isPublic: file.isPublic,
+      parentId: file.parentId,
+    }));
+
+    return response.status(200).json(result);
+  }
+
+  static async putPublish(request, response) {
+    const { id } = request.params;
+    const token = request.header('X-Token');
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const fileId = new ObjectID(id);
+    const file = await dbClient.db.collection('files').findOne({ _id: fileId, userId });
+    if (!file) {
+      return response.status(404).json({ error: 'Not found' });
+    }
+
+    await dbClient.db.collection('files').updateOne({ _id: fileId, userId }, { $set: { isPublic: true } });
+
+    return response.status(200).json({
+      id: file._id,
+      userId: file.userId,
+      name: file.name,
+      type: file.type,
+      isPublic: true,
+      parentId: file.parentId,
+    });
+  }
+
+  static async putUnPublish(request, response) {
+    const { id } = request.params;
+    const token = request.header('X-Token');
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const fileId = new ObjectID(id);
+    const file = await dbClient.db.collection('files').findOne({ _id: fileId, userId });
+    if (!file) {
+      return response.status(404).json({ error: 'Not found' });
+    }
+
+    await dbClient.db.collection('files').updateOne({ _id: fileId, userId }, { $set: { isPublic: false } });
+
+    return response.status(200).json({
+      id: file._id,
+      userId: file.userId,
+      name: file.name,
+      type: file.type,
+      isPublic: false,
+      parentId: file.parentId,
+    });
+  }
+
+  static async getFile(request, response) {
+    const { id } = request.params;
+    const size = request.query.size || null;
+    const token = request.header('X-Token');
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const fileId = new ObjectID(id);
+    const file = await dbClient.db.collection('files').findOne({ _id: fileId });
+    if (!file) {
+      return response.status(404).json({ error: 'Not found' });
+    }
+
+    if (file.type === 'folder') {
+      return response.status(400).json({ error: 'A folder doesn\'t have content' });
+    }
+
+    let filePath = file.localPath;
+    if (size) {
+      filePath = `${file.localPath}_${size}`;
+    }
+
+    const statAsync = promisify(stat);
+    const realpathAsync = promisify(realpath);
+    if (existsSync(file
