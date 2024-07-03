@@ -10,22 +10,17 @@ const AuthController = {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Extract credentials from Authorization header
     const base64Credentials = authHeader.split(' ')[1];
     const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
     const [email, password] = credentials.split(':');
 
-    // Hash the password to match stored SHA1 hash
     const hashedPassword = sha1(password);
 
     try {
-      // Find user in MongoDB by email and hashed password
       const user = await dbClient.db.collection('users').findOne({ email, password: hashedPassword });
       if (!user) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      // Generate token and store in Redis
       const token = uuidv4();
       const key = `auth_${token}`;
       await redisClient.set(key, user._id.toString(), 'EX', 24 * 60 * 60); // Store for 24 hours
@@ -51,7 +46,6 @@ const AuthController = {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      // Delete token from Redis
       await redisClient.del(key);
       return res.status(204).send();
     } catch (error) {
