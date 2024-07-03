@@ -231,4 +231,19 @@ class FilesController {
 
     const statAsync = promisify(stat);
     const realpathAsync = promisify(realpath);
-    if (existsSync(file
+    if (existsSync(filePath)) {
+      const realPath = await realpathAsync(filePath);
+      const fileStat = await statAsync(realPath);
+
+      response.setHeader('Content-Type', contentType(file.name));
+      response.setHeader('Content-Length', fileStat.size);
+
+      const readStream = fs.createReadStream(realPath);
+      readStream.pipe(response);
+    } else {
+      response.status(404).json({ error: 'Not found' });
+    }
+  }
+}
+
+export default FilesController;
